@@ -109,6 +109,11 @@ def _download_sync(url: str) -> Dict[str, Any]:
         'noplaylist': True,
         'source_address': '0.0.0.0',
         'js_runtimes': {'deno': {}, 'node': {}, 'quickjs': {}},
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],
+            }
+        },
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9',
