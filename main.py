@@ -316,6 +316,11 @@ async def download_and_send_media(message: Message, bot: Bot, media_info: tuple)
                 "• Platforma tomonidan vaqtinchalik cheklov qo'yilgan"
             )
 
+        user_id = message.from_user.id if message.from_user else 0
+        if is_admin(user_id):
+            clean_err = str(e).replace("`", "'")
+            error_text += f"\n\n🛠 **Admin xatolik:**\n`{clean_err[:300]}`"
+
         try:
             await status_msg.edit_text(error_text, parse_mode="Markdown")
         except Exception:
@@ -470,11 +475,36 @@ async def start_health_check_server(port: int) -> None:
     """Render, Koyeb, Railway kabi bulutli platformalarda 24/7 ishlashi uchun health-check porti"""
     from aiohttp import web
     async def ping_handler(request: web.Request) -> web.Response:
-        return web.Response(text="Bot 24/7 ishlash holatida faol! 🚀", status=200)
+        return web.Response(text="Bot 24/7 ishlash holatida faol! [v=2.1-yt-fix] 🚀", status=200)
+
+    async def test_dl_handler(request: web.Request) -> web.Response:
+        url = request.query.get("url")
+        if not url:
+            return web.Response(text="url parametri kerak, masalan: /test-dl?url=https://...", status=400)
+        try:
+            from downloader import download_video, cleanup_file
+            data = await download_video(url)
+            fp = data.get("file_path")
+            sz = os.path.getsize(fp) if fp and os.path.exists(fp) else 0
+            cleanup_file(fp)
+            return web.json_response({
+                "status": "success",
+                "title": data.get("title"),
+                "file_path": fp,
+                "size_mb": round(sz / (1024 * 1024), 2)
+            })
+        except Exception as e:
+            import traceback
+            return web.json_response({
+                "status": "error",
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }, status=500)
 
     app = web.Application()
     app.router.add_get("/", ping_handler)
     app.router.add_get("/health", ping_handler)
+    app.router.add_get("/test-dl", test_dl_handler)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)

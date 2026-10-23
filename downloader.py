@@ -107,12 +107,17 @@ def _download_sync(url: str) -> Dict[str, Any]:
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
+        'source_address': '0.0.0.0',
         'js_runtimes': {'deno': {}, 'node': {}, 'quickjs': {}},
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9',
         }
     }
+
+    cookie_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
+    if os.path.exists(cookie_path):
+        ydl_opts['cookiefile'] = cookie_path
 
     if FFMPEG_EXE:
         ydl_opts['ffmpeg_location'] = FFMPEG_EXE
