@@ -559,6 +559,16 @@ async def main() -> None:
     # Bulutli serverda uxlab qolish (spin-down) ning oldini oluvchi fon vazifasi
     asyncio.create_task(keep_alive_self_ping())
 
+    # Agar Render bulutida ishlayotgan bo'lsa va YouTube uchun cookies.txt ulanmagan bo'lsa:
+    # Render IP-manzili YouTube tomonidan bloklanganligi sababli, Render faqat 24/7 web server sifatida turadi.
+    # Bu Telegram xabarlarini mahalliy kompyuterdan to'qnashuvlarsiz (Conflict-free) qabul qilish imkonini beradi.
+    cookie_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
+    is_render = os.getenv("RENDER") or os.getenv("RENDER_EXTERNAL_URL")
+    if is_render and not os.path.exists(cookie_path) and os.getenv("FORCE_CLOUD_POLLING") != "true":
+        logger.info("Render bulutida cookies.txt yo'qligi sababli polling to'xtatildi. Bot mahalliy kompyuterdan ishlaydi!")
+        while True:
+            await asyncio.sleep(3600)
+
     bot = Bot(token=BOT_TOKEN)
     logger.info("Bot muvaffaqiyatli ishga tushdi!")
 

@@ -79,26 +79,27 @@ def _download_ytdlp(url: str) -> Dict[str, Any]:
     """Sinxron tarzda yt-dlp orqali videoni yuklab oladi."""
     out_template = os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s")
 
-    # Format tanlash strategiyasi:
-    # 1. 720p HD (gorizontal 1280x720 va vertikal Shorts 720x1280 uchun) - eng tezkor va har doim 50MB dan kichik
-    # 2. Agar 720p topilmasa 1080p yoki 480p/360p
+    # Format tanlash: 720p HD (gorizontal va Shorts vertikal), agar topilmasa eng yaxshi format (masalan format 18)
     format_selector = (
-        'bestvideo[height<=720][width<=1280][ext=mp4]+bestaudio[ext=m4a]/'
-        'bestvideo[width<=720][height<=1280][ext=mp4]+bestaudio[ext=m4a]/'
-        'bestvideo[height<=720][width<=1280]+bestaudio/'
-        'bestvideo[width<=720][height<=1280]+bestaudio/'
+        'bestvideo*[height<=720][width<=1280][ext=mp4]+bestaudio[ext=m4a]/'
+        'bestvideo*[width<=720][height<=1280][ext=mp4]+bestaudio[ext=m4a]/'
+        'bestvideo*[height<=720][width<=1280]+bestaudio/'
+        'bestvideo*[width<=720][height<=1280]+bestaudio/'
         'best[height<=720][ext=mp4]/'
         'best[height<=720]/'
-        'bestvideo[height<=1080][width<=1920][ext=mp4]+bestaudio[ext=m4a]/'
-        'bestvideo[width<=1080][height<=1920][ext=mp4]+bestaudio[ext=m4a]/'
-        'bestvideo[height<=1080][width<=1920]+bestaudio/'
-        'bestvideo[width<=1080][height<=1920]+bestaudio/'
-        'bestvideo[height<=480]+bestaudio/'
-        'best[height<=480]/'
-        'bestvideo[height<=360]+bestaudio/'
-        'best[height<=360]/'
+        'bestvideo*[height<=1080][width<=1920][ext=mp4]+bestaudio[ext=m4a]/'
+        'bestvideo*[width<=1080][height<=1920][ext=mp4]+bestaudio[ext=m4a]/'
+        'bestvideo*+bestaudio/'
         'best'
     )
+
+    cookie_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
+    has_cookies = os.path.exists(cookie_path)
+
+    # Agar cookies.txt bo'lsa web va android mijozlaridan foydalanamiz.
+    # Agar cookies.txt bo'lmasa, FAQAT 'android' mijozini qo'llaymiz - bu bot cheklovlarini
+    # (Sign in to confirm you're not a bot) butunlay chetlab o'tadi!
+    player_clients = ['web', 'android'] if has_cookies else ['android']
 
     ydl_opts = {
         'format': format_selector,
@@ -111,7 +112,7 @@ def _download_ytdlp(url: str) -> Dict[str, Any]:
         'js_runtimes': {'deno': {}, 'node': {}, 'quickjs': {}},
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'web'],
+                'player_client': player_clients,
             }
         },
         'http_headers': {
@@ -120,8 +121,7 @@ def _download_ytdlp(url: str) -> Dict[str, Any]:
         }
     }
 
-    cookie_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
-    if os.path.exists(cookie_path):
+    if has_cookies:
         ydl_opts['cookiefile'] = cookie_path
 
     if FFMPEG_EXE:
@@ -151,10 +151,10 @@ def _download_ytdlp(url: str) -> Dict[str, Any]:
                 pass
             fallback_opts = dict(ydl_opts)
             fallback_opts['format'] = (
-                'bestvideo[height<=480]+bestaudio/'
-                'bestvideo[width<=480]+bestaudio/'
+                'bestvideo*[height<=480]+bestaudio/'
+                'bestvideo*[width<=480]+bestaudio/'
                 'best[height<=480]/'
-                'bestvideo[height<=360]+bestaudio/'
+                'bestvideo*[height<=360]+bestaudio/'
                 'best[height<=360]/'
                 'best'
             )
