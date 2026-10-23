@@ -475,7 +475,7 @@ async def start_health_check_server(port: int) -> None:
     """Render, Koyeb, Railway kabi bulutli platformalarda 24/7 ishlashi uchun health-check porti"""
     from aiohttp import web
     async def ping_handler(request: web.Request) -> web.Response:
-        return web.Response(text="Bot 24/7 ishlash holatida faol! [v=2.1-yt-fix] 🚀", status=200)
+        return web.Response(text="Bot 24/7 ishlash holatida faol! [v=2.2-pytubefix] 🚀", status=200)
 
     async def test_dl_handler(request: web.Request) -> web.Response:
         url = request.query.get("url")

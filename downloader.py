@@ -209,8 +209,8 @@ def _download_sync(url: str) -> Dict[str, Any]:
         if "youtube" in url.lower() or "youtu.be" in url.lower():
             try:
                 return _download_pytubefix(url)
-            except Exception:
-                pass
+            except Exception as e_ptf:
+                raise Exception(f"yt-dlp xatosi: {e_ytdlp} | pytubefix xatosi: {e_ptf}")
         raise e_ytdlp
 
 
