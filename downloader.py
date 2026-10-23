@@ -44,8 +44,16 @@ if not FFMPEG_EXE:
 
 
 def _clean_url(url: str) -> str:
-    """Havola oxiridagi tinish belgilari yoki qavslarni tozalaydi."""
-    return url.rstrip(".,!?:;)'\"]") if url else url
+    """Havola oxiridagi tinish belgilari yoki qavslarni tozalaydi va Instagram havolasini tozalaydi."""
+    if not url:
+        return ""
+    cleaned = url.rstrip(".,!?:;)'\"]")
+    # Instagram post/reel havolalaridan ortiqcha tracking (?rpxt=..., ?igsh=...) parametrlarini tozalash
+    if "instagram.com" in cleaned.lower():
+        ig_match = re.search(r"(https?://(?:www\.)?instagram\.com/(?:p|reel|reels|tv|share)/[A-Za-z0-9_-]+)", cleaned, re.IGNORECASE)
+        if ig_match:
+            return ig_match.group(1) + "/"
+    return cleaned
 
 
 def extract_media_url(text: str) -> Optional[Tuple[str, str]]:
@@ -108,7 +116,11 @@ def _download_ytdlp(url: str) -> Dict[str, Any]:
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
-        'source_address': '0.0.0.0',
+        'updatetime': False,
+        'windowsfilenames': True,
+        'restrictfilenames': True,
+        'retries': 3,
+        'fragment_retries': 3,
         'js_runtimes': {'deno': {}, 'node': {}, 'quickjs': {}},
         'extractor_args': {
             'youtube': {

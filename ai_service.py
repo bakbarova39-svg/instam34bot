@@ -53,8 +53,8 @@ async def _ask_gemini(user_id: int, user_message: str, history: List[Dict[str, s
         "contents": contents
     }
 
-    # Ketma-ket tekshiriladigan barqaror modellar ro'yxati
-    models_to_try = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
+    # Ketma-ket tekshiriladigan barqaror modellar ro'yxati (Google Gemini API rasmiy modellari)
+    models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash", "gemini-1.5-pro"]
 
     async with aiohttp.ClientSession() as session:
         last_err = None

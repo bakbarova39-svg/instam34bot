@@ -419,8 +419,8 @@ async def cb_admin_list_admins(callback: CallbackQuery) -> None:
     text_lines = ["👑 **Bot Adminlari Ro'yxati:**\n"]
     for idx, aid in enumerate(admins, start=1):
         u = await database.get_user(aid)
-        uname = f"@{u['username']}" if (u and u.get("username")) else ""
-        fname = u.get("first_name", "") if u else ""
+        uname = escape_md(f"@{u['username']}" if (u and u.get("username")) else "")
+        fname = escape_md(u.get("first_name", "") if u else "")
         name_str = f" - {fname} {uname}".strip() if (fname or uname) else ""
         text_lines.append(f"**{idx}.** `{aid}`{name_str}")
 
@@ -772,8 +772,21 @@ async def process_admin_pm_send(message: Message, state: FSMContext, bot: Bot) -
         )
     except TelegramForbiddenError:
         await message.reply("⚠️ Xabar yuborilmadi: foydalanuvchi botni bloklagan.")
-    except Exception as e:
-        await message.reply(f"⚠️ Xabar yuborishda xatolik yuz berdi: {e}")
+    except Exception:
+        # Markdown entity parsing xatolik bersa, oddiy matn sifatida xavfsiz yuborish
+        try:
+            await bot.send_message(chat_id=target_user_id, text=f"📩 Bot administratsiyasidan xabar:\n\n{message.text}")
+            await message.reply(
+                f"✅ Xabar muvaffaqiyatli yetkazildi! (ID: `{target_user_id}`)",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="👤 Foydalanuvchi profiliga qaytish", callback_data=f"admin:uview:{target_user_id}:0")]
+                    ]
+                ),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            await message.reply(f"⚠️ Xabar yuborishda xatolik yuz berdi: {e}")
 
 
 # --- BARCHAGA XABAR YUBORISH (BROADCAST) ---

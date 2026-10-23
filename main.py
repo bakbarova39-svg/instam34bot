@@ -1,6 +1,7 @@
 import os
 import sys
 import uuid
+import asyncio
 import logging
 from dotenv import load_dotenv
 
@@ -214,11 +215,24 @@ async def clear_ai_history(message: Message, state: FSMContext) -> None:
 async def video_download_info(message: Message, state: FSMContext) -> None:
     """Video yuklash bo'limi tushuntirishi"""
     await state.clear()
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📷 Instagram haqida", callback_data="guide_ig"),
+                InlineKeyboardButton(text="🔴 YouTube haqida", callback_data="guide_yt")
+            ],
+            [
+                InlineKeyboardButton(text="🔘 Dumaloq video qilish", callback_data="guide_round")
+            ]
+        ]
+    )
     await message.answer(
-        "📥 **Video yuklash uchun:**\n\n"
-        "• **Instagram** (Reels, Post) yoki\n"
-        "• **YouTube** (Shorts, Video)\n\n"
-        "havolasini nusxalab botga yuboring. Bot uni yuklab beradi! 🎬",
+        "📥 **Video yuklash bo'limi:**\n\n"
+        "Quyidagi platformalardan istalgan havolani chatga yuboring:\n"
+        "• 📷 **Instagram:** Reels, post va IGTV videolari\n"
+        "• 🔴 **YouTube:** Shorts va standart videolar\n\n"
+        "💡 *Shunchaki havolani nusxalab shu yerga yuboring, bot darhol videoni yuklab beradi!*",
+        reply_markup=kb,
         parse_mode="Markdown"
     )
 
@@ -227,10 +241,22 @@ async def video_download_info(message: Message, state: FSMContext) -> None:
 async def round_video_info(message: Message, state: FSMContext) -> None:
     """Dumaloq video bo'limi tushuntirishi"""
     await state.clear()
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="💡 Qo'llanma", callback_data="guide_round"),
+                InlineKeyboardButton(text="🤖 AI Chat", callback_data="ai_start_from_prompt")
+            ]
+        ]
+    )
     await message.answer(
-        "🔘 **Dumaloq video (Video Note) tayyorlash uchun:**\n\n"
-        "Telefoningiz galereyasidan yoki boshqa chatdan istalgan **video faylni** "
-        "botga to'g'ridan-to'g'ri yuboring. Bot uni 1:1 formatda dumaloq qilib beradi! 🎥",
+        "🔘 **Dumaloq video (Video Note) bo'limi:**\n\n"
+        "Istalgan video faylni to'g'ridan-to'g'ri botga yuboring (telefon galereyasidan yoki chatdan).\n\n"
+        "⚙️ **Imkoniyatlar:**\n"
+        "• Avtomatik 1:1 kvadrat qirqish va doira shakliga o'tkazish\n"
+        "• Yuqori sifat va ovoz balandligini saqlash\n"
+        "• 60 soniyagacha bo'lgan Telegram Video Note formati",
+        reply_markup=kb,
         parse_mode="Markdown"
     )
 
@@ -416,8 +442,8 @@ async def handle_make_round_callback(callback: CallbackQuery, bot: Bot) -> None:
         cleanup_file(temp_round)
 
 
-@user_router.message(StateFilter(None), F.video)
-@user_router.message(StateFilter(None), F.document & F.document.mime_type.startswith("video/"))
+@user_router.message(F.video)
+@user_router.message(F.document & F.document.mime_type.startswith("video/"))
 async def handle_video_upload(message: Message, bot: Bot) -> None:
     """Foydalanuvchi to'g'ridan-to'g'ri video yuborganda uni dumaloq videoga aylantirish"""
     file_id = message.video.file_id if message.video else message.document.file_id
@@ -463,7 +489,7 @@ async def handle_incoming_message(message: Message, bot: Bot) -> None:
     """Foydalanuvchi yuborgan Instagram / YouTube havolalarini qayta ishlash"""
     user_text = message.text or ""
 
-    # Agar xabar komanda bo'lsa (masalan, /start, /admin, va h.k.) uni o'z routeri ko'rib chiqishi uchun o'tkazib yuboramiz
+    # Agar xabar komanda bo'lsa uni o'z routeri ko'rib chiqishi uchun o'tkazib yuboramiz
     if user_text.startswith("/"):
         return
 
@@ -474,17 +500,106 @@ async def handle_incoming_message(message: Message, bot: Bot) -> None:
 
     # Agar havola topilmasa
     if not media_info:
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🤖 AI Chatda so'rash", callback_data="ai_start_from_prompt"),
+                    InlineKeyboardButton(text="📥 Video yuklash", callback_data="guide_video")
+                ],
+                [
+                    InlineKeyboardButton(text="🔘 Dumaloq video", callback_data="guide_round"),
+                    InlineKeyboardButton(text="ℹ️ Barcha buyruqlar", callback_data="help_menu")
+                ]
+            ]
+        )
         await message.answer(
-            "❌ Noma'lum buyruq yoki havola.\n\n"
-            "• Sun'iy intellekt bilan suhbatlashish uchun **«🤖 AI Chat Bo'limi»** tugmasini bosing.\n"
-            "• Video yuklash uchun **Instagram** yoki **YouTube** havolasini yuboring.\n"
-            "• Dumaloq video yaratish uchun video fayl yuboring! 🎬",
-            reply_markup=get_main_keyboard(is_admin_user=is_user_admin),
+            "ℹ️ **Qanday xizmat kerak?**\n\n"
+            "• 🤖 **AI Chat:** Menga savol berish uchun «AI Chatda so'rash» tugmasini bosing yoki /ai yuboring.\n"
+            "• 📥 **Video yuklash:** Instagram yoki YouTube havolasini chatga yuboring.\n"
+            "• 🔘 **Dumaloq video:** Telefon galereyangizdan video yuboring.",
+            reply_markup=kb,
             parse_mode="Markdown"
         )
         return
 
     await download_and_send_media(message, bot, media_info)
+
+
+# --- INTERAKTIV YORDAMCHI CALLBACK HANDLERLAR ---
+
+@user_router.callback_query(F.data == "ai_start_from_prompt")
+async def cb_ai_start_from_prompt(callback: CallbackQuery, state: FSMContext) -> None:
+    """AI Chat bo'limiga inline tugma orqali o'tish"""
+    await state.set_state(UserStates.in_ai_chat)
+    user_id = callback.from_user.id if callback.from_user else 0
+    reset_chat(user_id)
+    await callback.answer()
+    await callback.message.answer(
+        "🤖 **Sun'iy Intellekt (AI) Chat bo'limi faollashdi!**\n\n"
+        "Menga istalgan savolingizni yozishingiz mumkin:\n"
+        "• 💡 Dasturlash, fan va darslar\n"
+        "• 🌐 Matnlar va tarjimalar\n"
+        "• 💬 Maslahatlar va erkin suhbat\n\n"
+        "Chiqish uchun pastdagi **«🔙 Asosiy menyuga qaytish»** tugmasini bosing.",
+        reply_markup=get_ai_keyboard(),
+        parse_mode="Markdown"
+    )
+
+
+@user_router.callback_query(F.data.in_(["guide_video", "guide_ig", "guide_yt"]))
+async def cb_guide_video(callback: CallbackQuery) -> None:
+    """Video yuklash bo'yicha qulay yo'riqnoma"""
+    text = (
+        "📥 **Video yuklash bo'yicha tezkor qo'llanma:**\n\n"
+        "1️⃣ **Instagram:** Kerakli Reel yoki post ostidagi «Ulashish» (Share) belgisini bosing va «Havoladan nusxa olish» (Copy Link) ni tanlang.\n\n"
+        "2️⃣ **YouTube:** Kerakli Shorts yoki video ostidagi «Share» tugmasini bosib havolani nusxalang.\n\n"
+        "3️⃣ Nusxalangan havolani to'g'ridan-to'g'ri ushbu chatga yuboring. Bot videoni avtomatik yuklab beradi! 🎬"
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔘 Dumaloq video qilish", callback_data="guide_round")],
+            [InlineKeyboardButton(text="🤖 AI Chat", callback_data="ai_start_from_prompt")]
+        ]
+    )
+    await callback.answer()
+    await callback.message.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+
+@user_router.callback_query(F.data == "guide_round")
+async def cb_guide_round(callback: CallbackQuery) -> None:
+    """Dumaloq video bo'yicha yo'riqnoma"""
+    text = (
+        "🔘 **Dumaloq video (Video Note) tayyorlash:**\n\n"
+        "1. Telefoningizdagi Telegram orqali qisqich (skrepka 📎) belgisini bosing.\n"
+        "2. Galereyangizdan 60 soniyagacha bo'lgan ixtiyoriy videoni tanlang va yuboring.\n"
+        "3. Bot uni avtomatik tarzda 1:1 dumaloq video xabarga aylantiradi! 🎥"
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📥 Video yuklash", callback_data="guide_video")],
+            [InlineKeyboardButton(text="🤖 AI Chat", callback_data="ai_start_from_prompt")]
+        ]
+    )
+    await callback.answer()
+    await callback.message.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+
+@user_router.callback_query(F.data == "help_menu")
+async def cb_help_menu(callback: CallbackQuery) -> None:
+    """Yordam menyusi"""
+    user_id = callback.from_user.id if callback.from_user else 0
+    is_user_admin = is_admin(user_id)
+    text = (
+        "ℹ️ **Botdan foydalanish yo'riqnomasi:**\n\n"
+        "🤖 **1. AI Chat:** «🤖 AI Chat Bo'limi» tugmasi yoki `/ai` komandasi orqali.\n"
+        "📥 **2. Video yuklash:** Instagram yoki YouTube havolasini chatga yuborish orqali.\n"
+        "🔘 **3. Dumaloq video:** Istalgan videoni botga yuborish orqali.\n"
+        "🆔 **Mening ID raqamim:** `/myid` komandasi orqali."
+    )
+    if is_user_admin:
+        text += "\n\n👑 **Admin boshqaruvi:** `/admin` komandasini yuboring."
+    await callback.answer()
+    await callback.message.answer(text, reply_markup=get_main_keyboard(is_admin_user=is_user_admin), parse_mode="Markdown")
 
 
 async def start_health_check_server(port: int) -> None:
@@ -530,11 +645,16 @@ async def start_health_check_server(port: int) -> None:
 
 async def keep_alive_self_ping() -> None:
     """Render yoki boshqa bulutli hostinglarda bot uxlab qolmasligi uchun tashqi URL ga har 7 daqiqada so'rov yuborish"""
-    is_cloud = os.getenv("RENDER") or os.getenv("PORT") or os.getenv("RENDER_EXTERNAL_URL")
+    is_cloud = os.getenv("RENDER") or os.getenv("PORT") or os.getenv("RENDER_EXTERNAL_URL") or os.getenv("RENDER_EXTERNAL_HOSTNAME")
     if not is_cloud:
         return
 
-    render_url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("EXTERNAL_URL") or "https://instam34bot.onrender.com"
+    render_url = (
+        os.getenv("RENDER_EXTERNAL_URL")
+        or os.getenv("EXTERNAL_URL")
+        or (f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}" if os.getenv("RENDER_EXTERNAL_HOSTNAME") else None)
+        or "https://instam34bot.onrender.com"
+    )
     health_url = f"{render_url.rstrip('/')}/health"
     root_url = f"{render_url.rstrip('/')}/"
 
@@ -575,20 +695,11 @@ async def main() -> None:
     # Bulutli serverda uxlab qolish (spin-down) ning oldini oluvchi fon vazifasi
     asyncio.create_task(keep_alive_self_ping())
 
-    # Agar Render bulutida ishlayotgan bo'lsa va YouTube uchun cookies.txt ulanmagan bo'lsa:
-    # Render IP-manzili YouTube tomonidan bloklanganligi sababli, Render faqat 24/7 web server sifatida turadi.
-    # Bu Telegram xabarlarini mahalliy kompyuterdan to'qnashuvlarsiz (Conflict-free) qabul qilish imkonini beradi.
-    cookie_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
-    is_render = os.getenv("RENDER") or os.getenv("RENDER_EXTERNAL_URL")
-    if is_render and not os.path.exists(cookie_path) and os.getenv("FORCE_CLOUD_POLLING") != "true":
-        logger.info("Render bulutida cookies.txt yo'qligi sababli polling to'xtatildi. Bot mahalliy kompyuterdan ishlaydi!")
-        while True:
-            await asyncio.sleep(3600)
-
     session = AiohttpSession(timeout=300.0)
     bot = Bot(token=BOT_TOKEN, session=session)
     logger.info("Bot muvaffaqiyatli ishga tushdi (AiohttpSession timeout=300s)!")
 
+    # Webhookni tozalab, pollingni boshlash (24/7 rejimda to'xtovsiz ishlaydi)
     await bot.delete_webhook(drop_pending_updates=False)
     await dp.start_polling(bot)
 
