@@ -1,10 +1,23 @@
 @echo off
 chcp 65001 > nul
-title Telegram Bot - instatube downloader
+title Telegram Bot - instatube downloader (Mahalliy sinov)
 echo ========================================================
-echo   Telegram Bot ishga tushirilmoqda...
-echo   Bot to'xtab qolmasligi uchun ushbu oynani yopmang!
+echo   Telegram Bot - Mahalliy (Local) Ishga Tushirish
 echo ========================================================
+echo.
+echo [MUHIM OGOHLANTIRISH]:
+echo Agar botingiz Render.com bulutli serverida 24/7 ishlayotgan
+echo bo'lsa, ushbu oynani ishga tushirish shart EMAS!
+echo Telegram bir vaqtning o'zida ikkita joyda bitta botni
+echo ishlatishga yo'l qo'ymaydi (Conflict xatosi yuz beradi).
+echo.
+echo Kompyuter o'chiq tursa ham bot ishlashi uchun Render.com
+echo serveri yetarli va to'liq avtomatik ishlaydi!
+echo.
+echo Baribir kompyuterda sinov tariqasida ishlatmoqchimisiz?
+echo (Davom etish uchun ixtiyoriy tugmani bosing, to'xtatish uchun oynani yoping)
+pause > nul
+echo.
 cd /d "%~dp0"
 
 :loop

@@ -9,8 +9,8 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from aiogram import Bot, Dispatcher, F
-from aiogram.filters import CommandStart, Command
+from aiogram import Bot, Dispatcher, Router, F
+from aiogram.filters import CommandStart, Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -32,6 +32,9 @@ from downloader import (
     DOWNLOAD_DIR
 )
 from ai_service import ask_ai, reset_chat
+import database
+from admin import admin_router, is_admin
+from middleware import UserTrackerMiddleware
 
 # Muhit o'zgaruvchilarini yuklash
 load_dotenv()
@@ -49,6 +52,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 dp = Dispatcher()
+user_router = Router()
+
+# Ma'lumotlar bazasini ishga tushirish
+database.init_db()
+
+# Middlewarelarni ulash (foydalanuvchilarni avtomatik ro'yxatga olish)
+dp.message.middleware(UserTrackerMiddleware())
+dp.callback_query.middleware(UserTrackerMiddleware())
+
+# Routerlarni tartib bo'yicha ulash: admin router birinchi o'rinda bo'lishi shart!
+dp.include_router(admin_router)
+dp.include_router(user_router)
 
 
 # Foydalanuvchi holatlari (FSM)
@@ -57,12 +72,15 @@ class UserStates(StatesGroup):
 
 
 # Asosiy menyu klaviaturasi
-def get_main_keyboard() -> ReplyKeyboardMarkup:
+def get_main_keyboard(is_admin_user: bool = False) -> ReplyKeyboardMarkup:
+    keyboard = [
+        [KeyboardButton(text="🤖 AI Chat Bo'limi")],
+        [KeyboardButton(text="📥 Video Yuklash"), KeyboardButton(text="🔘 Dumaloq Video")]
+    ]
+    if is_admin_user:
+        keyboard.append([KeyboardButton(text="⚙️ Admin Panel")])
     return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🤖 AI Chat Bo'limi")],
-            [KeyboardButton(text="📥 Video Yuklash"), KeyboardButton(text="🔘 Dumaloq Video")]
-        ],
+        keyboard=keyboard,
         resize_keyboard=True
     )
 
@@ -92,12 +110,15 @@ def get_round_button_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-@dp.message(CommandStart())
-@dp.message(Command("menu"))
+@user_router.message(CommandStart())
+@user_router.message(Command("menu"))
 async def command_start_handler(message: Message, state: FSMContext) -> None:
     """/start va /menu komandalari uchun handler"""
     await state.clear()
+    user_id = message.from_user.id if message.from_user else 0
     full_name = message.from_user.full_name if message.from_user else "Foydalanuvchi"
+    is_user_admin = is_admin(user_id)
+
     text = (
         f"Assalomu alaykum, {full_name}! 👋\n\n"
         "Men ko'p funksiyali **Yuklovchi, Dumaloq Video va AI Yordamchi** botman.\n\n"
@@ -108,12 +129,21 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
         "• 🔘 **Dumaloq Video:** Videolarni dumaloq formatga aylantirish\n\n"
         "Quyidagi menyudan kerakli bo'limni tanlang yoki to'g'ridan-to'g'ri havola/video yuboring! 👇"
     )
-    await message.answer(text, reply_markup=get_main_keyboard(), parse_mode="Markdown")
+    if is_user_admin:
+        text += (
+            "\n\n👑 **Siz bot adminsiz!**\n"
+            "Boshqaruv panelini ochish uchun pastdagi **«⚙️ Admin Panel»** tugmasini bosing yoki /admin buyrug'ini yuboring."
+        )
+
+    await message.answer(text, reply_markup=get_main_keyboard(is_admin_user=is_user_admin), parse_mode="Markdown")
 
 
-@dp.message(Command("help"))
+@user_router.message(Command("help"))
 async def command_help_handler(message: Message) -> None:
     """/help komandasi uchun handler"""
+    user_id = message.from_user.id if message.from_user else 0
+    is_user_admin = is_admin(user_id)
+
     text = (
         "ℹ️ **Botdan foydalanish yo'riqnomasi:**\n\n"
         "🤖 **1. AI Chat:**\n"
@@ -123,15 +153,19 @@ async def command_help_handler(message: Message) -> None:
         "• Instagram yoki YouTube havolasini chatga yuboring.\n\n"
         "🔘 **3. Dumaloq video qilish:**\n"
         "• Botga istalgan video faylni to'g'ridan-to'g'ri yuboring.\n"
-        "• Yoki yuklangan video ostidagi «Dumaloq video qilish» tugmasini bosing."
+        "• Yoki yuklangan video ostidagi «Dumaloq video qilish» tugmasini bosing.\n\n"
+        "🆔 **O'z ID raqamingizni bilish:** `/myid` komandasi orqali"
     )
-    await message.answer(text, reply_markup=get_main_keyboard(), parse_mode="Markdown")
+    if is_user_admin:
+        text += "\n\n👑 **Admin boshqaruvi:** `/admin` komandasini yuboring."
+
+    await message.answer(text, reply_markup=get_main_keyboard(is_admin_user=is_user_admin), parse_mode="Markdown")
 
 
 # --- AI CHAT BO'LIMI BOSHQARUVI ---
 
-@dp.message(F.text == "🤖 AI Chat Bo'limi")
-@dp.message(Command("ai"))
+@user_router.message(F.text == "🤖 AI Chat Bo'limi")
+@user_router.message(Command("ai"))
 async def enter_ai_chat(message: Message, state: FSMContext) -> None:
     """AI Chat bo'limiga kirish"""
     await state.set_state(UserStates.in_ai_chat)
@@ -150,7 +184,7 @@ async def enter_ai_chat(message: Message, state: FSMContext) -> None:
     await message.answer(text, reply_markup=get_ai_keyboard(), parse_mode="Markdown")
 
 
-@dp.message(F.text == "🔙 Asosiy menyuga qaytish")
+@user_router.message(F.text == "🔙 Asosiy menyuga qaytish")
 async def back_to_main_menu(message: Message, state: FSMContext) -> None:
     """AI chatdan chiqib asosiy menyuga qaytish"""
     await state.clear()
@@ -158,11 +192,11 @@ async def back_to_main_menu(message: Message, state: FSMContext) -> None:
     reset_chat(user_id)
     await message.answer(
         "Siz asosiy menyudasiz. Kerakli xizmatni tanlang:",
-        reply_markup=get_main_keyboard()
+        reply_markup=get_main_keyboard(is_admin_user=is_admin(user_id))
     )
 
 
-@dp.message(F.text == "🔄 Yangi suhbat boshlash")
+@user_router.message(F.text == "🔄 Yangi suhbat boshlash")
 async def clear_ai_history(message: Message, state: FSMContext) -> None:
     """AI bilan yangi suhbat boshlash (tarixni tozalash)"""
     user_id = message.from_user.id if message.from_user else 0
@@ -174,11 +208,11 @@ async def clear_ai_history(message: Message, state: FSMContext) -> None:
     )
 
 
-@dp.message(F.text == "📥 Video Yuklash")
+@user_router.message(F.text == "📥 Video Yuklash")
 async def video_download_info(message: Message, state: FSMContext) -> None:
     """Video yuklash bo'limi tushuntirishi"""
     await state.clear()
-    await message.reply(
+    await message.answer(
         "📥 **Video yuklash uchun:**\n\n"
         "• **Instagram** (Reels, Post) yoki\n"
         "• **YouTube** (Shorts, Video)\n\n"
@@ -187,11 +221,11 @@ async def video_download_info(message: Message, state: FSMContext) -> None:
     )
 
 
-@dp.message(F.text == "🔘 Dumaloq Video")
+@user_router.message(F.text == "🔘 Dumaloq Video")
 async def round_video_info(message: Message, state: FSMContext) -> None:
     """Dumaloq video bo'limi tushuntirishi"""
     await state.clear()
-    await message.reply(
+    await message.answer(
         "🔘 **Dumaloq video (Video Note) tayyorlash uchun:**\n\n"
         "Telefoningiz galereyasidan yoki boshqa chatdan istalgan **video faylni** "
         "botga to'g'ridan-to'g'ri yuboring. Bot uni 1:1 formatda dumaloq qilib beradi! 🎥",
@@ -205,7 +239,7 @@ async def download_and_send_media(message: Message, bot: Bot, media_info: tuple)
     platform, media_url = media_info
 
     icon = "📷" if platform == "Instagram" else "🔴"
-    status_msg = await message.reply(
+    status_msg = await message.answer(
         f"⏳ {icon} **{platform}** videosi aniqlanmoqda va yuklab olinmoqda... Iltimos, kuting.",
         parse_mode="Markdown"
     )
@@ -241,7 +275,7 @@ async def download_and_send_media(message: Message, bot: Bot, media_info: tuple)
         caption = "\n".join(caption_lines)
 
         video_input = FSInputFile(file_path)
-        await message.reply_video(
+        await message.answer_video(
             video=video_input,
             caption=caption,
             duration=int(duration) if duration else None,
@@ -251,7 +285,10 @@ async def download_and_send_media(message: Message, bot: Bot, media_info: tuple)
             reply_markup=get_round_button_keyboard()
         )
 
-        await status_msg.delete()
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
 
     except Exception as e:
         logger.error(f"Xatolik yuz berdi ({platform}): {e}", exc_info=True)
@@ -281,7 +318,7 @@ async def download_and_send_media(message: Message, bot: Bot, media_info: tuple)
         try:
             await status_msg.edit_text(error_text, parse_mode="Markdown")
         except Exception:
-            await message.reply(error_text, parse_mode="Markdown")
+            await message.answer(error_text, parse_mode="Markdown")
 
     finally:
         if file_path:
@@ -290,7 +327,7 @@ async def download_and_send_media(message: Message, bot: Bot, media_info: tuple)
 
 # --- AI CHAT BO'LIMIDAGI XABARLARNI QAYTA ISHLASH ---
 
-@dp.message(UserStates.in_ai_chat, F.text)
+@user_router.message(UserStates.in_ai_chat, F.text)
 async def process_ai_chat_message(message: Message, bot: Bot) -> None:
     """Foydalanuvchi AI Chat rejimida yozganda javob berish"""
     user_text = message.text or ""
@@ -312,15 +349,14 @@ async def process_ai_chat_message(message: Message, bot: Bot) -> None:
     for i in range(0, len(ai_response), chunk_size):
         chunk = ai_response[i:i + chunk_size]
         try:
-            await message.reply(chunk, parse_mode="Markdown")
+            await message.answer(chunk, parse_mode="Markdown")
         except Exception:
-            # Agar markdown formati xato bersa, oddiy matn sifatida yuborish
-            await message.reply(chunk)
+            await message.answer(chunk)
 
 
 # --- DUMALOQ VIDEO (VIDEO NOTE) HANDLERLARI ---
 
-@dp.callback_query(F.data == "make_round")
+@user_router.callback_query(F.data == "make_round")
 async def handle_make_round_callback(callback: CallbackQuery, bot: Bot) -> None:
     """Video ostidagi 'Dumaloq video qilish' tugmasi bosilganda"""
     msg = callback.message
@@ -329,7 +365,7 @@ async def handle_make_round_callback(callback: CallbackQuery, bot: Bot) -> None:
         return
 
     await callback.answer("⏳ Dumaloq video tayyorlanmoqda...")
-    status_msg = await msg.reply("⏳ Video dumaloq (Video Note) formatga aylantirilmoqda...")
+    status_msg = await msg.answer("⏳ Video dumaloq (Video Note) formatga aylantirilmoqda...")
 
     unique_id = uuid.uuid4().hex[:8]
     temp_input = os.path.join(DOWNLOAD_DIR, f"in_{unique_id}.mp4")
@@ -341,29 +377,35 @@ async def handle_make_round_callback(callback: CallbackQuery, bot: Bot) -> None:
         await convert_to_round_video(temp_input, temp_round)
 
         round_input = FSInputFile(temp_round)
-        await msg.reply_video_note(video_note=round_input, length=480)
-        await status_msg.delete()
+        await msg.answer_video_note(video_note=round_input, length=480)
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
 
     except Exception as e:
         logger.error(f"Dumaloq video konvertatsiyasida xatolik: {e}", exc_info=True)
-        await status_msg.edit_text("⚠️ Videoni dumaloq formatga o'tkazishda xatolik yuz berdi.")
+        try:
+            await status_msg.edit_text("⚠️ Videoni dumaloq formatga o'tkazishda xatolik yuz berdi.")
+        except Exception:
+            pass
     finally:
         cleanup_file(temp_input)
         cleanup_file(temp_round)
 
 
-@dp.message(F.video)
-@dp.message(F.document & F.document.mime_type.startswith("video/"))
+@user_router.message(StateFilter(None), F.video)
+@user_router.message(StateFilter(None), F.document & F.document.mime_type.startswith("video/"))
 async def handle_video_upload(message: Message, bot: Bot) -> None:
     """Foydalanuvchi to'g'ridan-to'g'ri video yuborganda uni dumaloq videoga aylantirish"""
     file_id = message.video.file_id if message.video else message.document.file_id
     file_size = (message.video.file_size if message.video else message.document.file_size) or 0
 
     if file_size > 50 * 1024 * 1024:
-        await message.reply("⚠️ Video hajmi 50 MB dan katta. Iltimos, kichikroq video yuboring.")
+        await message.answer("⚠️ Video hajmi 50 MB dan katta. Iltimos, kichikroq video yuboring.")
         return
 
-    status_msg = await message.reply("⏳ Video qabul qilindi. Dumaloq (Video Note) formatga aylantirilmoqda...")
+    status_msg = await message.answer("⏳ Video qabul qilindi. Dumaloq (Video Note) formatga aylantirilmoqda...")
 
     unique_id = uuid.uuid4().hex[:8]
     temp_input = os.path.join(DOWNLOAD_DIR, f"in_{unique_id}.mp4")
@@ -375,12 +417,18 @@ async def handle_video_upload(message: Message, bot: Bot) -> None:
         await convert_to_round_video(temp_input, temp_round)
 
         round_input = FSInputFile(temp_round)
-        await message.reply_video_note(video_note=round_input, length=480)
-        await status_msg.delete()
+        await message.answer_video_note(video_note=round_input, length=480)
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
 
     except Exception as e:
         logger.error(f"Dumaloq video yaratishda xatolik: {e}", exc_info=True)
-        await status_msg.edit_text("⚠️ Videoni dumaloq formatga o'tkazishda xatolik yuz berdi.")
+        try:
+            await status_msg.edit_text("⚠️ Videoni dumaloq formatga o'tkazishda xatolik yuz berdi.")
+        except Exception:
+            pass
     finally:
         cleanup_file(temp_input)
         cleanup_file(temp_round)
@@ -388,20 +436,28 @@ async def handle_video_upload(message: Message, bot: Bot) -> None:
 
 # --- INSTAGRAM VA YOUTUBE HAVOLALARINI YUKLASH HANDLERI ---
 
-@dp.message(F.text)
+@user_router.message(StateFilter(None), F.text)
 async def handle_incoming_message(message: Message, bot: Bot) -> None:
     """Foydalanuvchi yuborgan Instagram / YouTube havolalarini qayta ishlash"""
     user_text = message.text or ""
+
+    # Agar xabar komanda bo'lsa (masalan, /start, /admin, va h.k.) uni o'z routeri ko'rib chiqishi uchun o'tkazib yuboramiz
+    if user_text.startswith("/"):
+        return
+
     media_info = extract_media_url(user_text)
+
+    user_id = message.from_user.id if message.from_user else 0
+    is_user_admin = is_admin(user_id)
 
     # Agar havola topilmasa
     if not media_info:
-        await message.reply(
+        await message.answer(
             "❌ Noma'lum buyruq yoki havola.\n\n"
             "• Sun'iy intellekt bilan suhbatlashish uchun **«🤖 AI Chat Bo'limi»** tugmasini bosing.\n"
             "• Video yuklash uchun **Instagram** yoki **YouTube** havolasini yuboring.\n"
             "• Dumaloq video yaratish uchun video fayl yuboring! 🎬",
-            reply_markup=get_main_keyboard(),
+            reply_markup=get_main_keyboard(is_admin_user=is_user_admin),
             parse_mode="Markdown"
         )
         return
