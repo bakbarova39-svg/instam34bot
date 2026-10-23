@@ -75,7 +75,7 @@ def extract_youtube_url(text: str) -> Optional[str]:
     return _clean_url(match.group(1)) if match else None
 
 
-def _download_sync(url: str) -> Dict[str, Any]:
+def _download_ytdlp(url: str) -> Dict[str, Any]:
     """Sinxron tarzda yt-dlp orqali videoni yuklab oladi."""
     out_template = os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s")
 
@@ -175,6 +175,43 @@ def _download_sync(url: str) -> Dict[str, Any]:
             "height": info.get("height"),
             "thumbnail": info.get("thumbnail"),
         }
+
+
+def _download_pytubefix(url: str) -> Dict[str, Any]:
+    """yt-dlp serverda bloklanganda (Sign in to confirm you're not a bot) pytubefix orqali yuklash."""
+    from pytubefix import YouTube
+    yt = YouTube(url, client='ANDROID')
+    # Avval eng yuqori sifatli audio+video birga bo'lgan MP4 oqimni tanlash
+    stream = yt.streams.filter(progressive=True).order_by('resolution').desc().first()
+    if not stream:
+        stream = yt.streams.get_highest_resolution()
+    if not stream:
+        raise Exception("Pytubefix: Hech qanday video oqimi topilmadi.")
+
+    out_file = stream.download(output_path=DOWNLOAD_DIR)
+    return {
+        "file_path": out_file,
+        "title": yt.title or "Video",
+        "uploader": yt.author or "",
+        "duration": yt.length or 0,
+        "width": None,
+        "height": None,
+        "thumbnail": yt.thumbnail_url,
+    }
+
+
+def _download_sync(url: str) -> Dict[str, Any]:
+    """Sinxron tarzda videoni yuklab oladi (yt-dlp va pytubefix zaxira tizimi bilan)."""
+    try:
+        return _download_ytdlp(url)
+    except Exception as e_ytdlp:
+        # Agar YouTube videosi bo'lsa va yt-dlp cheklovga uchrasa, pytubefix zaxira mexanizmini ishga tushirish
+        if "youtube" in url.lower() or "youtu.be" in url.lower():
+            try:
+                return _download_pytubefix(url)
+            except Exception:
+                pass
+        raise e_ytdlp
 
 
 async def download_video(url: str) -> Dict[str, Any]:
