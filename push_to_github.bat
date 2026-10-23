@@ -8,7 +8,11 @@ echo ========================================================
 echo.
 cd /d "%~dp0"
 
-echo [1/2] GitHub bilan aloqa tekshirilmoqda...
+echo [1/3] O'zgarishlar saqlanmoqda...
+git add .
+git diff-index --quiet HEAD -- || git commit -m "Yangilanish: 24/7 self-ping va barqarorlik yaxshilandi"
+
+echo [2/3] GitHub bilan aloqa tekshirilmoqda va yuborilmoqda...
 git push -u origin main
 
 if %errorlevel% equ 0 (

@@ -482,6 +482,32 @@ async def start_health_check_server(port: int) -> None:
     logger.info(f"Health-check web server {port}-portda ishga tushdi.")
 
 
+async def keep_alive_self_ping() -> None:
+    """Render yoki boshqa bulutli hostinglarda bot uxlab qolmasligi uchun tashqi URL ga har 9 daqiqada so'rov yuborish"""
+    is_cloud = os.getenv("RENDER") or os.getenv("PORT") or os.getenv("RENDER_EXTERNAL_URL")
+    if not is_cloud:
+        return
+
+    render_url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("EXTERNAL_URL") or "https://instam34bot.onrender.com"
+    health_url = f"{render_url.rstrip('/')}/health"
+
+    # Server to'liq ishga tushishi uchun 30 soniya kutish
+    await asyncio.sleep(30)
+    logger.info(f"O'z-o'zini uyg'otib turish (Self-ping) xizmati faollashdi: {health_url}")
+
+    import aiohttp
+    while True:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(health_url, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                    logger.info(f"Self-ping muvaffaqiyatli: status={resp.status}")
+        except Exception as e:
+            logger.debug(f"Self-ping xatosi: {e}")
+
+        # Har 9 daqiqada (Render 15 daqiqada uxlab qoladi, 9 daqiqa doimiy uyg'oq ushlab turadi)
+        await asyncio.sleep(540)
+
+
 async def main() -> None:
     port_env = os.getenv("PORT")
     if port_env:
@@ -489,6 +515,9 @@ async def main() -> None:
             await start_health_check_server(int(port_env))
         except Exception as e:
             logger.warning(f"Health-check serverni ishga tushirishda xatolik: {e}")
+
+    # Bulutli serverda uxlab qolish (spin-down) ning oldini oluvchi fon vazifasi
+    asyncio.create_task(keep_alive_self_ping())
 
     bot = Bot(token=BOT_TOKEN)
     logger.info("Bot muvaffaqiyatli ishga tushdi!")
