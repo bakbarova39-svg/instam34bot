@@ -8,9 +8,9 @@ echo "      Telegram Bot 24/7 VPS O'rnatish Skripti"
 echo "=========================================================="
 
 # Kerakli tizim paketlarini yangilash va o'rnatish
-echo "[1/4] Tizim paketlari (Python, FFmpeg) tekshirilmoqda..."
+echo "[1/4] Tizim paketlari (Python, FFmpeg, Node.js) tekshirilmoqda..."
 sudo apt update -y
-sudo apt install -y python3 python3-pip python3-venv ffmpeg
+sudo apt install -y python3 python3-pip python3-venv ffmpeg nodejs
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 echo "Loyiha manzili: $PROJECT_DIR"
