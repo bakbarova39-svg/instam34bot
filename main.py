@@ -4,6 +4,9 @@ import uuid
 import logging
 from dotenv import load_dotenv
 
+# Muhit o'zgaruvchilarini darhol yuklash
+load_dotenv()
+
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if sys.stderr and hasattr(sys.stderr, "reconfigure"):
@@ -36,8 +39,6 @@ import database
 from admin import admin_router, is_admin
 from middleware import UserTrackerMiddleware
 
-# Muhit o'zgaruvchilarini yuklash
-load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 

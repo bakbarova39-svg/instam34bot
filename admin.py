@@ -4,6 +4,9 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import List, Optional
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from aiogram import Router, F, Bot
 from aiogram.filters import Command, Filter
@@ -37,14 +40,29 @@ def escape_md(text: Optional[str]) -> str:
 
 # --- ADMIN TEKSHIRUVI ---
 
+# Asosiy admin ID raqamlari (barcha sharoitda admin huquqi beriladi)
+DEFAULT_ADMIN_IDS = [5671758765, 6026531248]
+
+
 def get_admin_ids() -> List[int]:
-    """ADMIN_ID muhit o'zgaruvchisi yoki ma'lumotlar bazasidan adminlar ID ro'yxatini oladi"""
-    raw_ids = os.getenv("ADMIN_ID") or os.getenv("ADMINS") or ""
+    """ADMIN_ID muhit o'zgaruvchisi, default ro'yxat yoki bazadan adminlar ID ro'yxatini oladi"""
     admins: List[int] = []
+
+    # 1. Birlamchi zaxira adminlar
+    for da in DEFAULT_ADMIN_IDS:
+        if da not in admins:
+            admins.append(da)
+
+    # 2. .env fayli yoki hosting muhit o'zgaruvchilari (ADMIN_ID, ADMINS)
+    raw_ids = os.getenv("ADMIN_ID") or os.getenv("ADMINS") or ""
     for item in raw_ids.replace(";", ",").replace(" ", ",").split(","):
         item = item.strip()
         if item.isdigit():
-            admins.append(int(item))
+            val = int(item)
+            if val not in admins:
+                admins.append(val)
+
+    # 3. Ma'lumotlar bazasidagi sozlamalardan
     try:
         db_admin = database._get_setting_sync("admin_id", "")
         for item in db_admin.replace(";", ",").replace(" ", ",").split(","):
@@ -55,7 +73,9 @@ def get_admin_ids() -> List[int]:
                     admins.append(val)
     except Exception:
         pass
+
     return admins
+
 
 
 def is_admin(user_id: Optional[int]) -> bool:
@@ -99,7 +119,8 @@ async def get_admin_main_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin:broadcast")
         ],
         [
-            InlineKeyboardButton(text="📥 Baza yuklash (.csv / Excel)", callback_data="admin:export_csv")
+            InlineKeyboardButton(text="👑 Adminlar Ro'yxati", callback_data="admin:list_admins"),
+            InlineKeyboardButton(text="📥 Baza yuklash (.csv)", callback_data="admin:export_csv")
         ],
         [
             InlineKeyboardButton(text=notify_text, callback_data="admin:toggle_notify")
@@ -200,13 +221,81 @@ async def cmd_my_id(message: Message) -> None:
         f"🔰 **Holat:** {admin_status}\n"
     )
 
-    if not is_user_admin:
+    if is_user_admin:
+        text += (
+            "\n👑 **Admin boshqaruvi:** Boshqaruv panelini ochish uchun pastdagi "
+            "«⚙️ Admin Panel» tugmasini bosing yoki `/admin` buyrug'ini yuboring."
+        )
+    else:
         text += (
             "\n💡 *Eslatma:* Agar siz bot egasi bo'lsangiz, ushbu ID raqamni `.env` "
-            "fayliga `ADMIN_ID=` qatoriga qo'shing."
+            f"faylidagi `ADMIN_ID=` qatoriga qo'shing yoki admin orqali `/setadmin {user_id}` qiling."
         )
 
     await message.answer(text, parse_mode="Markdown")
+
+
+@admin_router.message(Command("setadmin"))
+async def cmd_set_admin(message: Message) -> None:
+    """Yangi admin qo'shish komandasi (faqat mavjud adminlar uchun)"""
+    user_id = message.from_user.id if message.from_user else 0
+    if not is_admin(user_id):
+        await message.answer("⛔ Siz bot admini emassiz!")
+        return
+
+    parts = message.text.split() if message.text else []
+    if len(parts) < 2 or not parts[1].strip().isdigit():
+        await message.answer(
+            "ℹ️ Yangi admin qo'shish uchun uning Telegram ID raqamini yuboring:\n\n"
+            "Masalan: `/setadmin 6026531248`",
+            parse_mode="Markdown"
+        )
+        return
+
+    new_id = int(parts[1].strip())
+    admins = get_admin_ids()
+    if new_id in admins:
+        await message.answer(f"ℹ️ Ushbu ID (`{new_id}`) allaqachon adminlar ro'yxatida mavjud.", parse_mode="Markdown")
+        return
+
+    admins.append(new_id)
+    new_admins_str = ",".join(str(a) for a in admins)
+    await database.set_setting("admin_id", new_admins_str)
+
+    await message.answer(
+        f"✅ Foydalanuvchi `{new_id}` muvaffaqiyatli admin etib tayinlandi!\n"
+        f"Jami adminlar soni: {len(admins)} ta.",
+        parse_mode="Markdown"
+    )
+
+
+@admin_router.message(Command("deladmin"))
+async def cmd_del_admin(message: Message) -> None:
+    """Adminlikdan chiqarish komandasi"""
+    user_id = message.from_user.id if message.from_user else 0
+    if not is_admin(user_id):
+        await message.answer("⛔ Siz bot admini emassiz!")
+        return
+
+    parts = message.text.split() if message.text else []
+    if len(parts) < 2 or not parts[1].strip().isdigit():
+        await message.answer("Masalan: `/deladmin 123456789`", parse_mode="Markdown")
+        return
+
+    target_id = int(parts[1].strip())
+    admins = get_admin_ids()
+    if target_id not in admins:
+        await message.answer(f"ℹ️ `{target_id}` adminlar ro'yxatida topilmadi.", parse_mode="Markdown")
+        return
+
+    admins = [a for a in admins if a != target_id]
+    new_admins_str = ",".join(str(a) for a in admins)
+    await database.set_setting("admin_id", new_admins_str)
+
+    await message.answer(
+        f"✅ `{target_id}` adminlar ro'yxatidan chiqarildi.",
+        parse_mode="Markdown"
+    )
 
 
 @admin_router.message(Command("admin"))
@@ -230,7 +319,9 @@ async def cmd_admin_panel(message: Message, state: FSMContext) -> None:
 
     if not is_admin(user_id):
         await message.answer(
-            "⛔ **Kechirasiz, ushbu bo'lim faqat bot adminlari uchun mo'ljallangan!**",
+            "⛔ **Kechirasiz, ushbu bo'lim faqat bot adminlari uchun mo'ljallangan!**\n\n"
+            f"Sizning Telegram ID raqamingiz: `{user_id}`\n"
+            "O'zingizni admin qilish uchun uni `.env` faylidagi `ADMIN_ID=` qatoriga qo'shing.",
             parse_mode="Markdown"
         )
         return
@@ -312,9 +403,42 @@ async def cb_admin_stats(callback: CallbackQuery) -> None:
 
     try:
         await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    except Exception as e:
+        if "message is not modified" not in str(e).lower():
+            try:
+                await callback.message.edit_text(text.replace("**", "").replace("`", ""), reply_markup=kb)
+            except Exception:
+                pass
+    await callback.answer("Statistika yangilandi!")
+
+
+@admin_router.callback_query(IsAdminFilter(), F.data == "admin:list_admins")
+async def cb_admin_list_admins(callback: CallbackQuery) -> None:
+    """Adminlar ro'yxatini ko'rsatish"""
+    admins = get_admin_ids()
+    text_lines = ["👑 **Bot Adminlari Ro'yxati:**\n"]
+    for idx, aid in enumerate(admins, start=1):
+        u = await database.get_user(aid)
+        uname = f"@{u['username']}" if (u and u.get("username")) else ""
+        fname = u.get("first_name", "") if u else ""
+        name_str = f" - {fname} {uname}".strip() if (fname or uname) else ""
+        text_lines.append(f"**{idx}.** `{aid}`{name_str}")
+
+    text_lines.append("\n💡 *Yangi admin qo'shish:* `/setadmin <ID>`")
+    text_lines.append("💡 *Adminni o'chirish:* `/deladmin <ID>`")
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Yangilash", callback_data="admin:list_admins")],
+            [InlineKeyboardButton(text="🔙 Boshqaruv paneli", callback_data="admin:main")]
+        ]
+    )
+    try:
+        await callback.message.edit_text("\n".join(text_lines), reply_markup=kb, parse_mode="Markdown")
     except Exception:
-        pass
+        await callback.message.edit_text("\n".join(text_lines).replace("**", "").replace("`", ""), reply_markup=kb)
     await callback.answer()
+
 
 
 @admin_router.callback_query(IsAdminFilter(), F.data.startswith("admin:users:"))
@@ -460,14 +584,9 @@ async def cb_admin_toggle_ban(callback: CallbackQuery) -> None:
     await callback.answer(status_msg, show_alert=True)
 
     # Profil ko'rinishini yangilash
-    fake_query = CallbackQuery(
-        id=callback.id,
-        from_user=callback.from_user,
-        chat_instance=callback.chat_instance,
-        message=callback.message,
-        data=f"admin:uview:{user_id}:{return_page}"
-    )
-    await cb_admin_user_view(fake_query)
+    callback.data = f"admin:uview:{user_id}:{return_page}"
+    await cb_admin_user_view(callback)
+
 
 
 @admin_router.callback_query(IsAdminFilter(), F.data == "admin:toggle_notify")
@@ -820,3 +939,10 @@ async def cb_admin_bcast_confirm(callback: CallbackQuery, state: FSMContext, bot
 @admin_router.callback_query(F.data == "noop")
 async def cb_noop(callback: CallbackQuery) -> None:
     await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin:"))
+async def cb_admin_unauthorized(callback: CallbackQuery) -> None:
+    """Admin bo'lmagan foydalanuvchi admin tugmalarini bosganda ogohlantirish"""
+    await callback.answer("⛔ Siz bot admini emassiz!", show_alert=True)
+

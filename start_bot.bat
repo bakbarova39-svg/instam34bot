@@ -15,8 +15,8 @@ echo Kompyuter o'chiq tursa ham bot ishlashi uchun Render.com
 echo serveri yetarli va to'liq avtomatik ishlaydi!
 echo.
 echo Baribir kompyuterda sinov tariqasida ishlatmoqchimisiz?
-echo (Davom etish uchun ixtiyoriy tugmani bosing, to'xtatish uchun oynani yoping)
-pause > nul
+echo Bot 3 soniyada avtomatik ishga tushadi (to'xtatish uchun oynani yoping)...
+timeout /t 3 > nul
 echo.
 cd /d "%~dp0"
 
