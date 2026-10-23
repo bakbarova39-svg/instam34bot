@@ -13,6 +13,7 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from aiogram import Bot, Dispatcher, Router, F
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.filters import CommandStart, Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -276,15 +277,30 @@ async def download_and_send_media(message: Message, bot: Bot, media_info: tuple)
         caption = "\n".join(caption_lines)
 
         video_input = FSInputFile(file_path)
-        await message.answer_video(
-            video=video_input,
-            caption=caption,
-            duration=int(duration) if duration else None,
-            width=width,
-            height=height,
-            supports_streaming=True,
-            reply_markup=get_round_button_keyboard()
-        )
+        # Katta video fayllarni Telegram serverlariga yuklashda timeout bo'lmasligi uchun 300 soniya berish va qayta urinish
+        upload_success = False
+        last_upload_err = None
+        for attempt in range(2):
+            try:
+                await message.answer_video(
+                    video=video_input,
+                    caption=caption,
+                    duration=int(duration) if duration else None,
+                    width=width,
+                    height=height,
+                    supports_streaming=True,
+                    reply_markup=get_round_button_keyboard(),
+                    request_timeout=300
+                )
+                upload_success = True
+                break
+            except Exception as e_up:
+                last_upload_err = e_up
+                if attempt == 0:
+                    logger.warning(f"Telegram serveriga video yuklashda uzilish, qayta urinilmoqda: {e_up}")
+                    await asyncio.sleep(2)
+        if not upload_success and last_upload_err:
+            raise last_upload_err
 
         try:
             await status_msg.delete()
@@ -383,7 +399,7 @@ async def handle_make_round_callback(callback: CallbackQuery, bot: Bot) -> None:
         await convert_to_round_video(temp_input, temp_round)
 
         round_input = FSInputFile(temp_round)
-        await msg.answer_video_note(video_note=round_input, length=480)
+        await msg.answer_video_note(video_note=round_input, length=480, request_timeout=300)
         try:
             await status_msg.delete()
         except Exception:
@@ -423,7 +439,7 @@ async def handle_video_upload(message: Message, bot: Bot) -> None:
         await convert_to_round_video(temp_input, temp_round)
 
         round_input = FSInputFile(temp_round)
-        await message.answer_video_note(video_note=round_input, length=480)
+        await message.answer_video_note(video_note=round_input, length=480, request_timeout=300)
         try:
             await status_msg.delete()
         except Exception:
@@ -569,8 +585,9 @@ async def main() -> None:
         while True:
             await asyncio.sleep(3600)
 
-    bot = Bot(token=BOT_TOKEN)
-    logger.info("Bot muvaffaqiyatli ishga tushdi!")
+    session = AiohttpSession(timeout=300.0)
+    bot = Bot(token=BOT_TOKEN, session=session)
+    logger.info("Bot muvaffaqiyatli ishga tushdi (AiohttpSession timeout=300s)!")
 
     await bot.delete_webhook(drop_pending_updates=False)
     await dp.start_polling(bot)
